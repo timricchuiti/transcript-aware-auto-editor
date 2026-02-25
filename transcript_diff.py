@@ -96,8 +96,17 @@ def load_whisper_json(filepath):
         return json.load(f)
 
 
-def _find_segment_times(whisper_data, block_text):
+def _find_segment_times(whisper_data, block_text, srt_start=None, claimed_segments=None):
     """Find the best matching segment in WhisperX JSON for a given SRT block text.
+
+    When multiple segments match the same text (duplicates), uses proximity to
+    the SRT block's timestamp to pick the closest unclaimed segment.
+
+    Args:
+        whisper_data: Parsed WhisperX JSON dict.
+        block_text: Text content of the SRT block.
+        srt_start: Start time from the SRT block (used for proximity matching).
+        claimed_segments: Set of already-claimed segment indices (mutated in place).
 
     Returns (start, end) in seconds, or None if no match found.
     """
@@ -105,11 +114,16 @@ def _find_segment_times(whisper_data, block_text):
     if not norm_block:
         return None
 
-    segments = whisper_data.get("segments", [])
-    best_match = None
-    best_score = 0.0
+    if claimed_segments is None:
+        claimed_segments = set()
 
-    for seg in segments:
+    segments = whisper_data.get("segments", [])
+    candidates = []  # (seg_index, start, end, match_quality, time_distance)
+
+    for i, seg in enumerate(segments):
+        if i in claimed_segments:
+            continue
+
         seg_text = seg.get("text", "")
         norm_seg = _normalize_text(seg_text)
         if not norm_seg:
@@ -117,30 +131,36 @@ def _find_segment_times(whisper_data, block_text):
 
         # Exact match
         if norm_seg == norm_block:
-            return (seg["start"], seg["end"])
+            dist = abs(seg["start"] - srt_start) if srt_start is not None else 0
+            candidates.append((i, seg["start"], seg["end"], 1.0, dist))
+            continue
 
-        # Containment match (block text within segment or vice versa)
+        # Containment/overlap match
         if norm_block in norm_seg or norm_seg in norm_block:
-            # Score by overlap ratio
             overlap = len(set(norm_block.split()) & set(norm_seg.split()))
             total = max(len(norm_block.split()), len(norm_seg.split()))
             score = overlap / total if total > 0 else 0
-            if score > best_score:
-                best_score = score
-                best_match = (seg["start"], seg["end"])
+            if score >= 0.5:
+                dist = abs(seg["start"] - srt_start) if srt_start is not None else 0
+                candidates.append((i, seg["start"], seg["end"], score, dist))
 
-    # Require at least 50% word overlap for a fuzzy match
-    if best_match and best_score >= 0.5:
-        return best_match
+    if not candidates:
+        return None
 
-    return None
+    # Sort by: best match quality (descending), then closest to SRT timestamp (ascending)
+    candidates.sort(key=lambda c: (-c[3], c[4]))
+    best = candidates[0]
+    claimed_segments.add(best[0])
+    return (best[1], best[2])
 
 
 def find_deleted_ranges(original_srt, edited_srt, whisper_json):
     """Find time ranges that were deleted from the SRT.
 
-    Compares original SRT against edited SRT by text content.
-    Blocks present in the original but missing from the edited version are deletions.
+    Compares original SRT against edited SRT by text content, counting duplicates.
+    If the same text appears N times in the original and M times in the edited
+    (where M < N), then N - M instances are considered deleted.
+
     Timestamps come from the WhisperX JSON (source of truth).
 
     Args:
@@ -155,24 +175,36 @@ def find_deleted_ranges(original_srt, edited_srt, whisper_json):
     edited_blocks = parse_srt(edited_srt)
     whisper_data = load_whisper_json(whisper_json)
 
-    # Build set of normalized text from edited SRT
-    edited_texts = {_normalize_text(b.text) for b in edited_blocks}
+    # Count occurrences of each normalized text in the edited SRT
+    from collections import Counter
+    edited_counts = Counter(_normalize_text(b.text) for b in edited_blocks)
 
-    # Find blocks in original that are missing from edited
+    # Walk through original blocks in order. For each normalized text,
+    # "spend" edited counts first (those are kept), then the rest are deletions.
+    remaining_edited = dict(edited_counts)
     deleted_blocks = []
     for block in original_blocks:
         norm = _normalize_text(block.text)
-        if norm and norm not in edited_texts:
+        if not norm:
+            continue
+        if remaining_edited.get(norm, 0) > 0:
+            # This block is still present in edited — consume one count
+            remaining_edited[norm] -= 1
+        else:
+            # This block was deleted
             deleted_blocks.append(block)
 
     if not deleted_blocks:
         print("No deleted blocks found — nothing to cut.")
         return []
 
-    # Look up timestamps from JSON for each deleted block
+    # Look up timestamps from JSON for each deleted block.
+    # Track which JSON segments have been claimed so duplicate text
+    # maps to distinct segments by proximity to the SRT block's timestamp.
+    claimed_segments = set()  # indices into whisper_data["segments"]
     ranges = []
     for block in deleted_blocks:
-        times = _find_segment_times(whisper_data, block.text)
+        times = _find_segment_times(whisper_data, block.text, block.start, claimed_segments)
         if times:
             ranges.append(times)
         else:

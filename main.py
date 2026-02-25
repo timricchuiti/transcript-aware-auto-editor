@@ -107,8 +107,8 @@ def main():
                         help="Print edit statistics")
 
     # auto-editor options
-    parser.add_argument("--margin", type=float, default=None,
-                        help="Margin in seconds around cuts")
+    parser.add_argument("--margin", default=None,
+                        help="Margin around cuts (passed directly to auto-editor, e.g., 0.15sec)")
     parser.add_argument("--export", default=None,
                         help="Export format: final-cut-pro, premiere, resolve, clip-sequence, or video")
     parser.add_argument("--ffmpeg-args", default=None,
