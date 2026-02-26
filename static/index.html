@@ -862,7 +862,10 @@ function uploadFile(file) {
   form.append("file", file);
 
   fetch("/api/upload", { method: "POST", body: form })
-    .then(r => r.json())
+    .then(r => {
+      if (!r.ok) return r.text().then(t => { throw new Error(`Upload failed (${r.status}): ${t.slice(0, 100)}`); });
+      return r.json();
+    })
     .then(data => {
       if (data.error) throw new Error(data.error);
       videoPath = data.path;
@@ -944,12 +947,24 @@ function loadTranscript() {
   $videoPlayer.src = `/media?path=${encodeURIComponent(videoPath)}`;
   $videoSection.classList.remove("hidden");
 
+  // Try .srt.orig first, then .srt
   fetch(`/api/srt?path=${encodeURIComponent(origSrtPath)}`)
     .then(r => {
-      if (!r.ok) return fetch(`/api/srt?path=${encodeURIComponent(srtPath)}`).then(r2 => r2.json());
-      return r.json();
+      if (r.ok) return r.json();
+      return fetch(`/api/srt?path=${encodeURIComponent(srtPath)}`).then(r2 => {
+        if (r2.ok) return r2.json();
+        return null; // No SRT found
+      });
     })
     .then(data => {
+      if (!data || data.error || !Array.isArray(data)) {
+        // No transcript exists yet — offer to transcribe
+        $progressSection.classList.remove("hidden");
+        logLine("No transcript found. Starting transcription...", "");
+        startTranscribe();
+        return;
+      }
+
       blocks = data.map((b, i) => ({
         id: i,
         index: b.index,

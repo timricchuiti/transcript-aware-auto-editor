@@ -21,6 +21,11 @@ UPLOAD_DIR = Path(tempfile.gettempdir()) / "auto-editor-gui"
 UPLOAD_DIR.mkdir(exist_ok=True)
 
 
+@app.errorhandler(413)
+def request_entity_too_large(error):
+    return jsonify({"error": "File too large (max 10 GB)"}), 413
+
+
 @app.route("/")
 def index():
     return send_from_directory(app.static_folder, "index.html")
