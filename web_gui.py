@@ -15,11 +15,34 @@ from transcript_diff import find_deleted_ranges, parse_srt, load_whisper_json
 from merge_cutlists import build_auto_editor_cmd, run_auto_editor
 
 app = Flask(__name__, static_folder="static")
+app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024 * 1024  # 10 GB
+
+UPLOAD_DIR = Path(tempfile.gettempdir()) / "auto-editor-gui"
+UPLOAD_DIR.mkdir(exist_ok=True)
 
 
 @app.route("/")
 def index():
     return send_from_directory(app.static_folder, "index.html")
+
+
+@app.route("/api/upload", methods=["POST"])
+def upload_file():
+    """Handle video file upload via drag-and-drop."""
+    if "file" not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+
+    f = request.files["file"]
+    if not f.filename:
+        return jsonify({"error": "Empty filename"}), 400
+
+    dest = UPLOAD_DIR / f.filename
+    f.save(str(dest))
+
+    return jsonify({
+        "path": str(dest),
+        "filename": f.filename,
+    })
 
 
 @app.route("/media")

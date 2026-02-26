@@ -4,430 +4,745 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Transcript-Aware Auto-Editor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;0,700;1,400&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg: #1a1a2e;
-  --bg-surface: #16213e;
-  --bg-card: #1f2b47;
-  --bg-card-hover: #263352;
-  --bg-deleted: #3d1a1a;
-  --text: #e0e0e0;
-  --text-muted: #8892a4;
-  --text-dim: #5a6578;
-  --accent: #4fc3f7;
-  --accent-hover: #29b6f6;
-  --danger: #ef5350;
-  --danger-bg: #4a1c1c;
-  --success: #66bb6a;
-  --border: #2a3a5c;
-  --removed-badge: #ef5350;
-  --highlight: rgba(79, 195, 247, 0.15);
-  --font-mono: 'SF Mono', 'Fira Code', 'Consolas', 'Monaco', monospace;
-  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --radius: 6px;
+  --blue: #48A8DD;
+  --blue-light: #e8f4fb;
+  --blue-pale: #f2f9fd;
+  --green: #61B87B;
+  --green-light: #eaf6ee;
+  --sunray: #EDAE49;
+  --sunray-light: #fdf5e6;
+  --brick: #D1495B;
+  --brick-light: #fbeaec;
+  --indigo: #003D5B;
+  --ink: #011627;
+  --bg: #FDFFFC;
+  --bg-page: #F7F8F5;
+  --bg-surface: #FFFFFF;
+  --border: #E2E4DE;
+  --border-light: #EEEFE9;
+  --text: #1A1F2B;
+  --text-secondary: #5A6275;
+  --text-dim: #8E94A4;
+  --font-display: 'DM Sans', system-ui, sans-serif;
+  --font-script: 'Courier Prime', 'Courier New', Courier, monospace;
+  --font-mono: 'JetBrains Mono', 'SF Mono', monospace;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+  --shadow-lg: 0 8px 30px rgba(0,0,0,0.10);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  font-family: var(--font-sans);
-  background: var(--bg);
+  font-family: var(--font-display);
+  background: var(--bg-page);
   color: var(--text);
   min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Header */
+.hidden { display: none !important; }
+
+/* ── Layout ── */
+.container {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+.container-wide {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* ── Header ── */
 header {
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  padding: 16px 0;
+}
+header .container-wide {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 24px;
-  background: var(--bg-surface);
-  border-bottom: 1px solid var(--border);
 }
-header h1 { font-size: 16px; font-weight: 600; letter-spacing: 0.5px; }
-header button {
+header h1 {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--indigo);
+}
+header h1 span { color: var(--blue); }
+#advancedToggle {
   background: none;
   border: 1px solid var(--border);
-  color: var(--text-muted);
+  color: var(--text-secondary);
   padding: 6px 14px;
-  border-radius: var(--radius);
+  border-radius: 6px;
   cursor: pointer;
+  font-family: var(--font-display);
   font-size: 13px;
+  font-weight: 500;
+  transition: all 0.15s;
 }
-header button:hover { border-color: var(--accent); color: var(--accent); }
+#advancedToggle:hover {
+  border-color: var(--blue);
+  color: var(--blue);
+}
 
-/* Sections */
-.section {
-  padding: 16px 24px;
-  border-bottom: 1px solid var(--border);
+/* ── Drop Zone ── */
+.drop-zone-wrap {
+  padding: 32px 0 24px;
 }
-.section-title {
-  font-size: 11px;
+.drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-lg);
+  padding: 48px 24px;
+  text-align: center;
+  transition: all 0.2s;
+  cursor: pointer;
+  background: var(--bg-surface);
+}
+.drop-zone.dragover {
+  border-color: var(--blue);
+  background: var(--blue-pale);
+  box-shadow: 0 0 0 4px rgba(72, 168, 221, 0.1);
+}
+.drop-zone.uploading { pointer-events: none; opacity: 0.7; }
+.drop-zone-icon {
+  font-size: 36px;
+  margin-bottom: 12px;
+  color: var(--text-dim);
+}
+.drop-zone-text {
+  font-size: 15px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+.drop-zone-text strong { color: var(--blue); }
+.drop-zone-hint {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.drop-zone-file-input { display: none; }
+.drop-alt {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: center;
+}
+.drop-alt-divider {
+  font-size: 12px;
+  color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 1px;
-  color: var(--text-muted);
-  margin-bottom: 10px;
 }
-
-/* Input row */
-.input-row {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-.input-row input[type="text"] {
-  flex: 1;
-  background: var(--bg-card);
+.path-input {
+  background: var(--bg-surface);
   border: 1px solid var(--border);
   color: var(--text);
-  padding: 8px 12px;
-  border-radius: var(--radius);
+  padding: 8px 14px;
+  border-radius: 6px;
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 12px;
+  width: 360px;
+  transition: border-color 0.15s;
 }
-.input-row input:focus { outline: none; border-color: var(--accent); }
+.path-input:focus { outline: none; border-color: var(--blue); }
 
+/* ── Buttons ── */
 .btn {
-  background: var(--accent);
-  color: #000;
-  border: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 8px 18px;
-  border-radius: var(--radius);
+  border-radius: 6px;
   cursor: pointer;
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-weight: 500;
   font-size: 13px;
+  border: none;
+  transition: all 0.15s;
   white-space: nowrap;
 }
-.btn:hover { background: var(--accent-hover); }
-.btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.btn-danger { background: var(--danger); color: #fff; }
-.btn-danger:hover { background: #f44336; }
-.btn-outline {
-  background: none;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
+.btn-primary {
+  background: var(--blue);
+  color: #fff;
 }
-.btn-outline:hover { border-color: var(--accent); color: var(--accent); }
-
-/* Hidden utility */
-.hidden { display: none !important; }
-
-/* Progress log */
-#progress-log {
-  background: #0d1117;
+.btn-primary:hover { background: #3a9ad0; }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-secondary {
+  background: var(--bg-surface);
+  color: var(--text-secondary);
   border: 1px solid var(--border);
+}
+.btn-secondary:hover { border-color: var(--blue); color: var(--blue); }
+.btn-danger-outline {
+  background: none;
+  color: var(--brick);
+  border: 1px solid var(--brick-light);
+}
+.btn-danger-outline:hover {
+  background: var(--brick-light);
+  border-color: var(--brick);
+}
+.btn-success-outline {
+  background: none;
+  color: var(--green);
+  border: 1px solid var(--green-light);
+}
+.btn-success-outline:hover {
+  background: var(--green-light);
+  border-color: var(--green);
+}
+.btn-sm { padding: 5px 12px; font-size: 12px; }
+
+/* ── Progress Log ── */
+#progress-section { padding: 0 0 24px; }
+#progress-log {
+  background: var(--ink);
+  color: #b0bec5;
   border-radius: var(--radius);
-  padding: 12px;
+  padding: 16px;
   font-family: var(--font-mono);
   font-size: 12px;
   max-height: 180px;
   overflow-y: auto;
-  color: var(--text-muted);
-  line-height: 1.6;
+  line-height: 1.7;
 }
 #progress-log .line { white-space: pre-wrap; word-break: break-all; }
-#progress-log .line-error { color: var(--danger); }
-#progress-log .line-done { color: var(--success); }
+#progress-log .line::before { content: "> "; color: #546e7a; }
+#progress-log .line-error { color: var(--brick); }
+#progress-log .line-error::before { content: "! "; color: var(--brick); }
+#progress-log .line-done { color: var(--green); }
+#progress-log .line-done::before { content: "\2713 "; color: var(--green); }
 
-/* Video player */
-.video-controls {
+/* ── Video Section ── */
+#video-section { padding-bottom: 0; }
+.video-wrap {
+  background: #000;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+}
+video { width: 100%; display: block; max-height: 400px; }
+
+.video-toolbar {
   display: flex;
   align-items: center;
-  gap: 16px;
-  margin-bottom: 10px;
+  gap: 20px;
+  padding: 10px 0 0;
 }
-.video-controls label { font-size: 13px; color: var(--text-muted); cursor: pointer; }
-.video-controls input[type="checkbox"] { margin-right: 4px; }
-video {
-  width: 100%;
-  max-height: 320px;
-  border-radius: var(--radius);
-  background: #000;
+.video-toolbar label {
+  font-size: 12px;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
 }
+.video-toolbar input[type="checkbox"] { accent-color: var(--blue); }
 
-/* Two-column transcript */
-.transcript-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+/* ── Stats Bar ── */
+#summary-bar {
+  display: flex;
   gap: 0;
+  margin: 20px 0;
+  background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
-  max-height: 55vh;
+  box-shadow: var(--shadow-sm);
 }
-.transcript-col {
-  overflow-y: auto;
-  padding: 0;
+.stat-card {
+  flex: 1;
+  padding: 14px 18px;
+  text-align: center;
+  border-right: 1px solid var(--border-light);
 }
-.transcript-col + .transcript-col { border-left: 1px solid var(--border); }
-.col-header {
-  position: sticky;
-  top: 0;
-  background: var(--bg-surface);
-  padding: 8px 14px;
-  font-size: 11px;
+.stat-card:last-child { border-right: none; }
+.stat-label {
+  font-size: 10px;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 1px;
-  color: var(--text-muted);
-  border-bottom: 1px solid var(--border);
-  z-index: 2;
+  letter-spacing: 1.2px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+.stat-val {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--indigo);
+}
+.stat-card.stat-danger .stat-val { color: var(--brick); }
+.stat-card.stat-accent .stat-val { color: var(--blue); }
+
+/* ── Transcript Two-Column ── */
+#transcript-section { padding-bottom: 24px; }
+.transcript-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.transcript-col-headers {
+  display: flex;
+  flex: 1;
+  gap: 16px;
+}
+.transcript-col-label {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--text-dim);
+}
+.transcript-col-label.label-edit { text-align: left; }
+
+.transcript-columns {
+  display: flex;
+  gap: 16px;
+  align-items: stretch;
+}
+
+.script-page {
+  flex: 1;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  max-height: 55vh;
+  overflow-y: auto;
+}
+.script-page.pane-original {
+  border-left: 3px solid var(--border);
+}
+.script-page.pane-edit {
+  border-left: 3px solid var(--blue);
 }
 
 /* Block cards */
 .block-card {
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--border);
-  cursor: pointer;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-light);
   transition: background 0.15s;
   position: relative;
+  animation: fadeSlideIn 0.3s ease-out both;
 }
-.block-card:hover { background: var(--bg-card-hover); }
-.block-card.active { background: var(--highlight); }
-.block-card .block-meta {
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.block-card:last-child { border-bottom: none; }
+.block-card:hover { background: var(--bg-page); }
+.block-card.active {
+  background: var(--blue-pale);
+  box-shadow: inset 3px 0 0 var(--blue);
+}
+
+.block-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.block-meta-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.block-number {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-dim);
+  background: var(--bg-page);
+  padding: 2px 8px;
+  border-radius: 4px;
+  min-width: 28px;
+  text-align: center;
+}
+.block-time {
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-dim);
-  margin-bottom: 4px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.block-card .block-text {
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-/* Left panel: deleted styling */
-.block-card.deleted-view {
-  background: var(--bg-deleted);
-}
-.block-card.deleted-view .block-text {
-  text-decoration: line-through;
-  color: var(--text-dim);
-}
-.removed-badge {
-  display: inline-block;
-  background: var(--removed-badge);
-  color: #fff;
-  font-size: 9px;
-  font-weight: 700;
-  padding: 2px 6px;
-  border-radius: 3px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-/* Right panel: delete button */
-.delete-btn {
-  background: none;
-  border: none;
-  color: var(--text-dim);
-  font-size: 18px;
   cursor: pointer;
-  padding: 6px 10px;
-  border-radius: 3px;
-  line-height: 1;
 }
-.delete-btn:hover { color: var(--danger); background: var(--danger-bg); }
-
-/* Hidden deleted card on right panel */
-.block-card.deleted-edit { display: none; }
-
-/* Export bar */
-.export-row {
-  display: flex;
-  gap: 16px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-.export-row label {
-  font-size: 12px;
-  color: var(--text-muted);
+.block-time:hover { color: var(--blue); }
+.block-actions {
   display: flex;
   align-items: center;
   gap: 6px;
+  opacity: 0;
+  transition: opacity 0.15s;
 }
-.export-row select, .export-row input[type="range"], .export-row input[type="number"], .export-row input[type="text"] {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
+.block-card:hover .block-actions { opacity: 1; }
+
+.block-text {
+  font-family: var(--font-script);
+  font-size: 14px;
+  line-height: 1.65;
   color: var(--text);
-  padding: 5px 8px;
+  min-height: 1.65em;
+  outline: none;
+  padding: 2px 0;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.15s;
+}
+.block-text:focus {
+  border-bottom-color: var(--blue);
+}
+.block-text[contenteditable="true"]::selection {
+  background: var(--blue-light);
+}
+
+/* ── Cut blocks (edit pane) ── */
+.pane-edit .block-card.is-cut {
+  background: var(--brick-light);
+  opacity: 0.7;
+}
+.pane-edit .block-card.is-cut .block-number { background: var(--brick-light); color: var(--brick); }
+.pane-edit .block-card.is-cut .block-text {
+  text-decoration: line-through;
+  text-decoration-color: var(--brick);
+  color: var(--text-dim);
+  font-style: italic;
+}
+.pane-edit .block-card.is-cut .block-actions { opacity: 1; }
+
+/* ── Cut blocks (original pane) ── */
+.pane-original .block-card.is-cut {
+  background: var(--brick-light);
+}
+.pane-original .block-card.is-cut .block-number { background: var(--brick-light); color: var(--brick); }
+.pane-original .block-card.is-cut .block-text {
+  text-decoration: line-through;
+  text-decoration-color: var(--brick);
+  color: var(--brick);
+}
+
+/* ── Word-level diff marks (original pane) ── */
+.diff-del {
+  color: var(--brick);
+  background: var(--brick-light);
+  text-decoration: line-through;
+  text-decoration-color: var(--brick);
+  border-radius: 2px;
+  padding: 0 2px;
+}
+.diff-ok {
+  /* default — no special styling */
+}
+
+/* ── Cut badge ── */
+.cut-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--brick);
+  background: #fff;
+  border: 1px solid var(--brick);
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* ── Edited badge ── */
+.edited-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--sunray);
+  background: var(--sunray-light);
+  border: 1px solid var(--sunray);
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* ── Export Section ── */
+#export-section {
+  padding: 24px 0;
+}
+.export-bar {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+  box-shadow: var(--shadow-sm);
+}
+.export-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.export-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.export-bar select,
+.export-bar input[type="range"] {
+  border: 1px solid var(--border);
+  border-radius: 6px;
   font-size: 13px;
+  font-family: var(--font-display);
+  padding: 6px 10px;
+  background: #fff;
+  color: var(--text);
 }
-.export-row input[type="range"] {
-  width: 120px;
-  accent-color: var(--accent);
-}
-.export-row select { padding: 5px 10px; }
+.export-bar input[type="range"] { width: 120px; accent-color: var(--blue); }
 .range-val {
   font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--accent);
+  font-size: 13px;
+  color: var(--blue);
   min-width: 40px;
 }
+.export-spacer { flex: 1; }
 
-/* Summary */
-#summary-bar {
-  padding: 10px 24px;
-  background: var(--bg-surface);
-  border-bottom: 1px solid var(--border);
-  font-size: 13px;
-  color: var(--text-muted);
-}
-#summary-bar span { margin-right: 24px; }
-#summary-bar .val { color: var(--accent); font-family: var(--font-mono); }
-
-/* Advanced panel */
+/* ── Advanced Panel ── */
 #advanced-panel {
-  padding: 16px 24px;
-  border-bottom: 1px solid var(--border);
+  padding-bottom: 24px;
+}
+.advanced-card {
   background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px 24px;
+  box-shadow: var(--shadow-sm);
+}
+.advanced-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--text-dim);
+  margin-bottom: 14px;
 }
 .advanced-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
 }
 .advanced-grid label {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
   font-size: 12px;
-  color: var(--text-muted);
+  font-weight: 500;
+  color: var(--text-secondary);
 }
 .advanced-grid input {
-  background: var(--bg-card);
   border: 1px solid var(--border);
-  color: var(--text);
-  padding: 6px 10px;
-  border-radius: var(--radius);
+  border-radius: 6px;
+  padding: 8px 12px;
   font-family: var(--font-mono);
   font-size: 13px;
+  color: var(--text);
+  background: #fff;
+  transition: border-color 0.15s;
 }
+.advanced-grid input:focus { outline: none; border-color: var(--blue); }
 
-/* Export result */
+/* ── Export Result ── */
 #export-result {
-  padding: 12px 24px;
+  margin-bottom: 24px;
+  padding: 16px 20px;
+  border-radius: var(--radius);
   font-family: var(--font-mono);
   font-size: 12px;
-  border-bottom: 1px solid var(--border);
+  white-space: pre-wrap;
+  line-height: 1.6;
 }
-#export-result.success { background: #1a2e1a; color: var(--success); }
-#export-result.error { background: var(--danger-bg); color: var(--danger); }
+#export-result.success {
+  background: var(--green-light);
+  color: #2d6e3f;
+  border: 1px solid var(--green);
+}
+#export-result.error {
+  background: var(--brick-light);
+  color: var(--brick);
+  border: 1px solid var(--brick);
+}
 
-/* Scrollbar */
-::-webkit-scrollbar { width: 8px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+/* ── Scrollbar ── */
+.script-page::-webkit-scrollbar { width: 6px; }
+.script-page::-webkit-scrollbar-track { background: transparent; }
+.script-page::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+.script-page::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+/* ── Stagger delays ── */
+.script-page .block-card:nth-child(1) { animation-delay: 0.02s; }
+.script-page .block-card:nth-child(2) { animation-delay: 0.04s; }
+.script-page .block-card:nth-child(3) { animation-delay: 0.06s; }
+.script-page .block-card:nth-child(4) { animation-delay: 0.08s; }
+.script-page .block-card:nth-child(5) { animation-delay: 0.10s; }
+.script-page .block-card:nth-child(6) { animation-delay: 0.12s; }
+.script-page .block-card:nth-child(7) { animation-delay: 0.14s; }
+.script-page .block-card:nth-child(8) { animation-delay: 0.16s; }
+.script-page .block-card:nth-child(9) { animation-delay: 0.18s; }
+.script-page .block-card:nth-child(n+10) { animation-delay: 0.20s; }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>Transcript-Aware Auto-Editor</h1>
-  <button id="advancedToggle" onclick="toggleAdvanced()">Advanced Mode</button>
+  <div class="container-wide">
+    <h1>Transcript-Aware <span>Auto-Editor</span></h1>
+    <button id="advancedToggle" onclick="toggleAdvanced()">Advanced</button>
+  </div>
 </header>
 
-<!-- Step 1: Video path + transcribe -->
-<div class="section">
-  <div class="section-title">Video</div>
-  <div class="input-row">
-    <input type="text" id="videoPath" placeholder="/path/to/video.mp4" spellcheck="false">
-    <button class="btn" id="transcribeBtn" onclick="startTranscribe()">Transcribe</button>
-    <button class="btn btn-outline" id="loadExistingBtn" onclick="loadExisting()">Load Existing</button>
-  </div>
-</div>
+<div class="container">
 
-<!-- Progress log -->
-<div class="section hidden" id="progress-section">
-  <div class="section-title">Transcription Progress</div>
-  <div id="progress-log"></div>
-</div>
-
-<!-- Video player -->
-<div class="section hidden" id="video-section">
-  <div class="video-controls">
-    <label><input type="checkbox" id="syncToggle" checked> Sync video to transcript</label>
-    <label><input type="checkbox" id="scrollSyncToggle" checked> Sync scroll between panels</label>
-  </div>
-  <video id="videoPlayer" controls preload="metadata"></video>
-</div>
-
-<!-- Summary bar -->
-<div id="summary-bar" class="hidden">
-  <span>Blocks: <span class="val" id="sumTotal">0</span></span>
-  <span>Removed: <span class="val" id="sumRemoved">0</span></span>
-  <span>Time cut: <span class="val" id="sumTimeCut">0.0s</span></span>
-  <span>Reduction: <span class="val" id="sumReduction">0%</span></span>
-</div>
-
-<!-- Transcript panels -->
-<div id="transcript-section" class="hidden">
-  <div class="transcript-grid">
-    <div class="transcript-col" id="leftPanel">
-      <div class="col-header">Original</div>
+  <!-- Drop Zone -->
+  <div class="drop-zone-wrap">
+    <div class="drop-zone" id="dropZone">
+      <div class="drop-zone-icon">&#127916;</div>
+      <div class="drop-zone-text">Drop a video file here or <strong>click to browse</strong></div>
+      <div class="drop-zone-hint">mp4, mov, mkv, avi, webm</div>
+      <input type="file" class="drop-zone-file-input" id="fileInput" accept="video/*">
     </div>
-    <div class="transcript-col" id="rightPanel">
-      <div class="col-header">Edit (click x to delete)</div>
+    <div class="drop-alt">
+      <span class="drop-alt-divider">or</span>
+      <input type="text" class="path-input" id="videoPath" placeholder="paste a local path" spellcheck="false">
+      <button class="btn btn-secondary btn-sm" id="loadExistingBtn" onclick="loadExisting()">Load Existing</button>
     </div>
   </div>
-</div>
 
-<!-- Export controls -->
-<div class="section hidden" id="export-section">
-  <div class="section-title">Export</div>
-  <div class="export-row">
-    <label>Margin:
-      <input type="range" id="marginSlider" min="0" max="1" step="0.05" value="0.10">
-      <span class="range-val" id="marginVal">0.10s</span>
-    </label>
-    <label>Export:
-      <select id="exportFormat">
-        <option value="final-cut-pro">Final Cut Pro</option>
-        <option value="premiere">Premiere</option>
-        <option value="resolve">DaVinci Resolve</option>
-        <option value="clip-sequence">Clip Sequence</option>
-        <option value="video">Video</option>
-      </select>
-    </label>
-    <button class="btn btn-outline" id="undoBtn" onclick="undoDelete()" disabled>Undo</button>
-    <button class="btn" id="exportBtn" onclick="startExport()">Export</button>
+  <!-- Progress log -->
+  <div class="hidden" id="progress-section">
+    <div id="progress-log"></div>
   </div>
-</div>
 
-<!-- Advanced panel -->
-<div id="advanced-panel" class="hidden">
-  <div class="section-title">Advanced Options</div>
-  <div class="advanced-grid">
-    <label>Silent speed <input type="text" id="silentSpeed" placeholder="99999 (cut)"></label>
-    <label>Sounded speed <input type="text" id="soundedSpeed" placeholder="1"></label>
-    <label>Video codec <input type="text" id="videoCodec" placeholder="auto"></label>
-    <label>Audio codec <input type="text" id="audioCodec" placeholder="auto"></label>
-    <label>FFmpeg args <input type="text" id="ffmpegArgs" placeholder="-crf 22 -preset veryfast"></label>
-    <label>Edit method <input type="text" id="editMethod" placeholder="audio:threshold=4%"></label>
+  <!-- Video player -->
+  <div class="hidden" id="video-section">
+    <div class="video-wrap">
+      <video id="videoPlayer" controls preload="metadata"></video>
+    </div>
+    <div class="video-toolbar">
+      <label><input type="checkbox" id="syncToggle" checked> Sync playback</label>
+      <label><input type="checkbox" id="scrollSyncToggle" checked> Sync scroll</label>
+    </div>
   </div>
-</div>
 
-<!-- Export result -->
-<div id="export-result" class="hidden"></div>
+  <!-- Stats bar -->
+  <div id="summary-bar" class="hidden">
+    <div class="stat-card">
+      <div class="stat-label">Blocks</div>
+      <div class="stat-val" id="sumTotal">0</div>
+    </div>
+    <div class="stat-card stat-danger">
+      <div class="stat-label">Cut</div>
+      <div class="stat-val" id="sumRemoved">0</div>
+    </div>
+    <div class="stat-card stat-accent">
+      <div class="stat-label">Time Removed</div>
+      <div class="stat-val" id="sumTimeCut">0.0s</div>
+    </div>
+    <div class="stat-card stat-accent">
+      <div class="stat-label">Reduction</div>
+      <div class="stat-val" id="sumReduction">0%</div>
+    </div>
+  </div>
+
+</div><!-- /.container -->
+
+<!-- Transcript uses wider container for two columns -->
+<div class="container-wide">
+
+  <div id="transcript-section" class="hidden">
+    <div class="transcript-header">
+      <div class="transcript-col-headers">
+        <div class="transcript-col-label">Original</div>
+        <div class="transcript-col-label label-edit">Edit</div>
+      </div>
+      <button class="btn btn-secondary btn-sm" id="undoBtn" onclick="undoLast()" disabled>Undo</button>
+    </div>
+    <div class="transcript-columns">
+      <div class="script-page pane-original" id="originalPane"></div>
+      <div class="script-page pane-edit" id="editPane"></div>
+    </div>
+  </div>
+
+  <!-- Export controls -->
+  <div class="hidden" id="export-section">
+    <div class="export-bar">
+      <div class="export-field">
+        <span class="export-label">Margin</span>
+        <input type="range" id="marginSlider" min="0" max="1" step="0.05" value="0.10">
+        <span class="range-val" id="marginVal">0.10s</span>
+      </div>
+      <div class="export-field">
+        <span class="export-label">Format</span>
+        <select id="exportFormat">
+          <option value="final-cut-pro">Final Cut Pro</option>
+          <option value="premiere">Premiere</option>
+          <option value="resolve">DaVinci Resolve</option>
+          <option value="clip-sequence">Clip Sequence</option>
+          <option value="video">Video</option>
+        </select>
+      </div>
+      <div class="export-spacer"></div>
+      <button class="btn btn-primary" id="exportBtn" onclick="startExport()">Export</button>
+    </div>
+  </div>
+
+  <!-- Advanced panel -->
+  <div id="advanced-panel" class="hidden">
+    <div class="advanced-card">
+      <div class="advanced-title">Advanced Options</div>
+      <div class="advanced-grid">
+        <label>Silent speed <input type="text" id="silentSpeed" placeholder="99999 (cut)"></label>
+        <label>Sounded speed <input type="text" id="soundedSpeed" placeholder="1"></label>
+        <label>Video codec <input type="text" id="videoCodec" placeholder="auto"></label>
+        <label>Audio codec <input type="text" id="audioCodec" placeholder="auto"></label>
+        <label>FFmpeg args <input type="text" id="ffmpegArgs" placeholder="-crf 22 -preset veryfast"></label>
+        <label>Edit method <input type="text" id="editMethod" placeholder="audio:threshold=4%"></label>
+      </div>
+    </div>
+  </div>
+
+  <!-- Export result -->
+  <div id="export-result" class="hidden"></div>
+
+</div><!-- /.container-wide -->
 
 <script>
 // ── State ──
-let blocks = [];       // {id, index, start, end, text, deleted}
-let undoStack = [];    // block IDs
+let blocks = [];       // {id, index, start, end, text, originalText, deleted}
+let undoStack = [];    // [{type: 'cut'|'edit', id, prevText?}]
+let videoPath = "";
 let srtPath = "";
 let origSrtPath = "";
 let jsonPath = "";
 let currentHighlight = -1;
 let deletedRanges = [];
+let scrollSyncing = false;
 
 // ── DOM refs ──
-const $videoPath = document.getElementById("videoPath");
-const $transcribeBtn = document.getElementById("transcribeBtn");
-const $loadExistingBtn = document.getElementById("loadExistingBtn");
+const $dropZone = document.getElementById("dropZone");
+const $fileInput = document.getElementById("fileInput");
+const $videoPathInput = document.getElementById("videoPath");
 const $progressSection = document.getElementById("progress-section");
 const $progressLog = document.getElementById("progress-log");
 const $videoSection = document.getElementById("video-section");
@@ -435,8 +750,8 @@ const $videoPlayer = document.getElementById("videoPlayer");
 const $syncToggle = document.getElementById("syncToggle");
 const $scrollSyncToggle = document.getElementById("scrollSyncToggle");
 const $transcriptSection = document.getElementById("transcript-section");
-const $leftPanel = document.getElementById("leftPanel");
-const $rightPanel = document.getElementById("rightPanel");
+const $originalPane = document.getElementById("originalPane");
+const $editPane = document.getElementById("editPane");
 const $exportSection = document.getElementById("export-section");
 const $marginSlider = document.getElementById("marginSlider");
 const $marginVal = document.getElementById("marginVal");
@@ -459,12 +774,115 @@ function logLine(msg, cls = "") {
   $progressLog.scrollTop = $progressLog.scrollHeight;
 }
 
+function escHtml(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// ── Word-Level Diff ──
+// Uses LCS to find which words from the original were deleted
+function wordDiff(original, edited) {
+  const a = original.split(/(\s+)/).filter(s => s.length > 0);
+  const b = edited.split(/(\s+)/).filter(s => s.length > 0);
+
+  // Extract just the words (non-whitespace) for comparison
+  const aWords = a.filter(s => s.trim().length > 0);
+  const bWords = b.filter(s => s.trim().length > 0);
+
+  const m = aWords.length, n = bWords.length;
+
+  // Build LCS table
+  const dp = [];
+  for (let i = 0; i <= m; i++) {
+    dp[i] = new Array(n + 1).fill(0);
+  }
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (aWords[i - 1] === bWords[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1] + 1;
+      } else {
+        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+      }
+    }
+  }
+
+  // Backtrack to find which original words are kept vs deleted
+  const result = []; // {word, deleted: bool}
+  let i = m, j = n;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && aWords[i - 1] === bWords[j - 1]) {
+      result.unshift({ word: aWords[i - 1], deleted: false });
+      i--; j--;
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      // Word added in edited — skip (not shown on left)
+      j--;
+    } else {
+      result.unshift({ word: aWords[i - 1], deleted: true });
+      i--;
+    }
+  }
+  return result;
+}
+
+function renderDiffHtml(original, edited) {
+  if (original === edited) return escHtml(original);
+
+  const diff = wordDiff(original, edited);
+  return diff.map(({ word, deleted }) =>
+    deleted
+      ? `<span class="diff-del">${escHtml(word)}</span>`
+      : escHtml(word)
+  ).join(" ");
+}
+
+// ── Drag & Drop ──
+$dropZone.addEventListener("click", () => $fileInput.click());
+$fileInput.addEventListener("change", (e) => {
+  if (e.target.files.length) uploadFile(e.target.files[0]);
+});
+
+$dropZone.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  $dropZone.classList.add("dragover");
+});
+$dropZone.addEventListener("dragleave", () => {
+  $dropZone.classList.remove("dragover");
+});
+$dropZone.addEventListener("drop", (e) => {
+  e.preventDefault();
+  $dropZone.classList.remove("dragover");
+  const file = e.dataTransfer.files[0];
+  if (file) uploadFile(file);
+});
+
+function uploadFile(file) {
+  $dropZone.classList.add("uploading");
+  $dropZone.querySelector(".drop-zone-text").textContent = `Uploading ${file.name}...`;
+
+  const form = new FormData();
+  form.append("file", file);
+
+  fetch("/api/upload", { method: "POST", body: form })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) throw new Error(data.error);
+      videoPath = data.path;
+      $videoPathInput.value = videoPath;
+      $dropZone.querySelector(".drop-zone-text").innerHTML = `<strong>${data.filename}</strong> ready`;
+      $dropZone.classList.remove("uploading");
+      startTranscribe();
+    })
+    .catch(err => {
+      $dropZone.querySelector(".drop-zone-text").textContent = "Upload failed: " + err.message;
+      $dropZone.classList.remove("uploading");
+    });
+}
+
 // ── Transcription ──
 function startTranscribe() {
-  const path = $videoPath.value.trim();
+  const path = videoPath || $videoPathInput.value.trim();
   if (!path) return;
+  videoPath = path;
 
-  $transcribeBtn.disabled = true;
   $progressSection.classList.remove("hidden");
   $progressLog.innerHTML = "";
 
@@ -479,7 +897,7 @@ function startTranscribe() {
 
     function read() {
       reader.read().then(({ done, value }) => {
-        if (done) { $transcribeBtn.disabled = false; return; }
+        if (done) return;
         buf += decoder.decode(value, { stream: true });
         const lines = buf.split("\n");
         buf = lines.pop();
@@ -505,16 +923,15 @@ function startTranscribe() {
     read();
   }).catch(err => {
     logLine("Request failed: " + err.message, "error");
-    $transcribeBtn.disabled = false;
   });
 }
 
 // ── Load Existing ──
 function loadExisting() {
-  const path = $videoPath.value.trim();
+  const path = $videoPathInput.value.trim();
   if (!path) return;
+  videoPath = path;
 
-  // Derive paths from video path
   const base = path.replace(/\.[^.]+$/, "");
   srtPath = base + ".srt";
   origSrtPath = base + ".srt.orig";
@@ -524,13 +941,9 @@ function loadExisting() {
 
 // ── Load Transcript ──
 function loadTranscript() {
-  const videoPath = $videoPath.value.trim();
-
-  // Set up video player
   $videoPlayer.src = `/media?path=${encodeURIComponent(videoPath)}`;
   $videoSection.classList.remove("hidden");
 
-  // Load SRT blocks (use orig if available, fall back to edited)
   fetch(`/api/srt?path=${encodeURIComponent(origSrtPath)}`)
     .then(r => {
       if (!r.ok) return fetch(`/api/srt?path=${encodeURIComponent(srtPath)}`).then(r2 => r2.json());
@@ -543,9 +956,11 @@ function loadTranscript() {
         start: b.start,
         end: b.end,
         text: b.text,
+        originalText: b.text,
         deleted: false,
       }));
       undoStack = [];
+      $undoBtn.disabled = true;
       renderTranscript();
       $transcriptSection.classList.remove("hidden");
       $exportSection.classList.remove("hidden");
@@ -558,116 +973,313 @@ function loadTranscript() {
     });
 }
 
-// ── Render ──
+// ── Render Both Panes ──
 function renderTranscript() {
-  // Clear panels (keep headers)
-  $leftPanel.innerHTML = '<div class="col-header">Original</div>';
-  $rightPanel.innerHTML = '<div class="col-header">Edit (click \u2715 to delete)</div>';
+  renderOriginalPane();
+  renderEditPane();
+  bindEditPaneEvents();
+  bindScrollSync();
+}
+
+function renderOriginalPane() {
+  $originalPane.innerHTML = "";
 
   for (const b of blocks) {
-    // Left panel card
-    const leftCard = document.createElement("div");
-    leftCard.className = "block-card" + (b.deleted ? " deleted-view" : "");
-    leftCard.dataset.id = b.id;
-    leftCard.dataset.start = b.start;
-    leftCard.dataset.end = b.end;
-    leftCard.innerHTML = `
-      <div class="block-meta">
-        <span>${b.index ?? b.id + 1}  ${fmt(b.start)}\u2013${fmt(b.end)}</span>
-        ${b.deleted ? '<span class="removed-badge">Removed</span>' : ""}
-      </div>
-      <div class="block-text">${escHtml(b.text)}</div>
-    `;
-    leftCard.addEventListener("click", () => seekTo(b.start));
-    $leftPanel.appendChild(leftCard);
+    const card = document.createElement("div");
+    card.className = "block-card" + (b.deleted ? " is-cut" : "");
+    card.dataset.id = b.id;
+    card.dataset.start = b.start;
+    card.dataset.end = b.end;
 
-    // Right panel card
-    const rightCard = document.createElement("div");
-    rightCard.className = "block-card" + (b.deleted ? " deleted-edit" : "");
-    rightCard.dataset.id = b.id;
-    rightCard.dataset.start = b.start;
-    rightCard.dataset.end = b.end;
-    rightCard.innerHTML = `
+    const isEdited = !b.deleted && b.text !== b.originalText;
+    const badgeHtml = b.deleted
+      ? `<span class="cut-badge">\u2702 CUT</span>`
+      : (isEdited ? `<span class="edited-badge">\u270E Edited</span>` : "");
+
+    const textHtml = b.deleted
+      ? escHtml(b.originalText)
+      : renderDiffHtml(b.originalText, b.text);
+
+    card.innerHTML = `
       <div class="block-meta">
-        <span>${b.index ?? b.id + 1}  ${fmt(b.start)}\u2013${fmt(b.end)}</span>
-        <button class="delete-btn" title="Delete block" onclick="deleteBlock(${b.id})">\u2715</button>
+        <div class="block-meta-left">
+          <span class="block-number">${b.index ?? b.id + 1}</span>
+          <span class="block-time">${fmt(b.start)} \u2013 ${fmt(b.end)}</span>
+          ${badgeHtml}
+        </div>
       </div>
-      <div class="block-text">${escHtml(b.text)}</div>
+      <div class="block-text">${textHtml}</div>
     `;
-    rightCard.addEventListener("click", (e) => {
-      if (e.target.closest(".delete-btn")) return;
-      seekTo(b.start);
+
+    card.addEventListener("click", () => seekTo(b.start));
+    $originalPane.appendChild(card);
+  }
+}
+
+function renderEditPane() {
+  $editPane.innerHTML = "";
+
+  for (const b of blocks) {
+    const card = document.createElement("div");
+    card.className = "block-card" + (b.deleted ? " is-cut" : "");
+    card.dataset.id = b.id;
+    card.dataset.start = b.start;
+    card.dataset.end = b.end;
+
+    if (b.deleted) {
+      card.innerHTML = `
+        <div class="block-meta">
+          <div class="block-meta-left">
+            <span class="block-number">${b.index ?? b.id + 1}</span>
+            <span class="block-time">${fmt(b.start)} \u2013 ${fmt(b.end)}</span>
+            <span class="cut-badge">\u2702 CUT</span>
+          </div>
+          <div class="block-actions" style="opacity:1">
+            <button class="btn btn-success-outline btn-sm" data-restore="${b.id}">Restore</button>
+          </div>
+        </div>
+        <div class="block-text">${escHtml(b.originalText)}</div>
+      `;
+    } else {
+      card.innerHTML = `
+        <div class="block-meta">
+          <div class="block-meta-left">
+            <span class="block-number">${b.index ?? b.id + 1}</span>
+            <span class="block-time" data-seek="${b.start}">${fmt(b.start)} \u2013 ${fmt(b.end)}</span>
+          </div>
+          <div class="block-actions">
+            <button class="btn btn-danger-outline btn-sm" data-cut="${b.id}">Cut</button>
+          </div>
+        </div>
+        <div class="block-text" contenteditable="true" data-block-id="${b.id}">${escHtml(b.text)}</div>
+      `;
+    }
+
+    $editPane.appendChild(card);
+  }
+}
+
+function bindEditPaneEvents() {
+  // Cut buttons
+  $editPane.querySelectorAll("[data-cut]").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      cutBlock(parseInt(btn.dataset.cut));
     });
-    $rightPanel.appendChild(rightCard);
+  });
+
+  // Restore buttons
+  $editPane.querySelectorAll("[data-restore]").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      restoreBlock(parseInt(btn.dataset.restore));
+    });
+  });
+
+  // Seek on timestamp click
+  $editPane.querySelectorAll("[data-seek]").forEach(el => {
+    el.addEventListener("click", () => seekTo(parseFloat(el.dataset.seek)));
+  });
+
+  // Text editing — update on blur, sync to left
+  $editPane.querySelectorAll('.block-text[contenteditable="true"]').forEach(el => {
+    el.addEventListener("blur", () => {
+      const id = parseInt(el.dataset.blockId);
+      const b = blocks.find(x => x.id === id);
+      if (!b) return;
+      const newText = el.textContent.trim();
+      if (newText !== b.text) {
+        // Push undo for text edit
+        undoStack.push({ type: "edit", id: b.id, prevText: b.text });
+        $undoBtn.disabled = false;
+        b.text = newText;
+        updateOriginalBlock(b.id);
+        updateSummary();
+      }
+    });
+    el.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); el.blur(); }
+    });
+  });
+
+  // Click card to seek (but not on buttons or editable text)
+  $editPane.querySelectorAll(".block-card").forEach(card => {
+    card.addEventListener("click", (e) => {
+      if (e.target.closest("button") || e.target.closest('[contenteditable="true"]')) return;
+      seekTo(parseFloat(card.dataset.start));
+    });
+  });
+}
+
+// ── Update single block on original pane (after text edit) ──
+function updateOriginalBlock(id) {
+  const b = blocks.find(x => x.id === id);
+  if (!b) return;
+
+  const card = $originalPane.querySelector(`[data-id="${id}"]`);
+  if (!card) return;
+
+  const isEdited = !b.deleted && b.text !== b.originalText;
+  const badgeHtml = b.deleted
+    ? `<span class="cut-badge">\u2702 CUT</span>`
+    : (isEdited ? `<span class="edited-badge">\u270E Edited</span>` : "");
+
+  const textHtml = b.deleted
+    ? escHtml(b.originalText)
+    : renderDiffHtml(b.originalText, b.text);
+
+  card.className = "block-card" + (b.deleted ? " is-cut" : "");
+  card.innerHTML = `
+    <div class="block-meta">
+      <div class="block-meta-left">
+        <span class="block-number">${b.index ?? b.id + 1}</span>
+        <span class="block-time">${fmt(b.start)} \u2013 ${fmt(b.end)}</span>
+        ${badgeHtml}
+      </div>
+    </div>
+    <div class="block-text">${textHtml}</div>
+  `;
+  card.addEventListener("click", () => seekTo(b.start));
+}
+
+// ── Update single block on edit pane ──
+function updateEditBlock(id) {
+  const b = blocks.find(x => x.id === id);
+  if (!b) return;
+
+  const card = $editPane.querySelector(`[data-id="${id}"]`);
+  if (!card) return;
+
+  card.className = "block-card" + (b.deleted ? " is-cut" : "");
+
+  if (b.deleted) {
+    card.innerHTML = `
+      <div class="block-meta">
+        <div class="block-meta-left">
+          <span class="block-number">${b.index ?? b.id + 1}</span>
+          <span class="block-time">${fmt(b.start)} \u2013 ${fmt(b.end)}</span>
+          <span class="cut-badge">\u2702 CUT</span>
+        </div>
+        <div class="block-actions" style="opacity:1">
+          <button class="btn btn-success-outline btn-sm" data-restore="${b.id}">Restore</button>
+        </div>
+      </div>
+      <div class="block-text">${escHtml(b.originalText)}</div>
+    `;
+    card.querySelector("[data-restore]").addEventListener("click", (e) => {
+      e.stopPropagation();
+      restoreBlock(b.id);
+    });
+  } else {
+    card.innerHTML = `
+      <div class="block-meta">
+        <div class="block-meta-left">
+          <span class="block-number">${b.index ?? b.id + 1}</span>
+          <span class="block-time" data-seek="${b.start}">${fmt(b.start)} \u2013 ${fmt(b.end)}</span>
+        </div>
+        <div class="block-actions">
+          <button class="btn btn-danger-outline btn-sm" data-cut="${b.id}">Cut</button>
+        </div>
+      </div>
+      <div class="block-text" contenteditable="true" data-block-id="${b.id}">${escHtml(b.text)}</div>
+    `;
+    card.querySelector("[data-cut]").addEventListener("click", (e) => {
+      e.stopPropagation();
+      cutBlock(b.id);
+    });
+    card.querySelector("[data-seek]").addEventListener("click", () => seekTo(b.start));
+    const textEl = card.querySelector('[contenteditable="true"]');
+    textEl.addEventListener("blur", () => {
+      const newText = textEl.textContent.trim();
+      if (newText !== b.text) {
+        undoStack.push({ type: "edit", id: b.id, prevText: b.text });
+        $undoBtn.disabled = false;
+        b.text = newText;
+        updateOriginalBlock(b.id);
+        updateSummary();
+      }
+    });
+    textEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); textEl.blur(); }
+    });
   }
 
-  // Set up scroll sync
-  setupScrollSync();
+  card.addEventListener("click", (e) => {
+    if (e.target.closest("button") || e.target.closest('[contenteditable="true"]')) return;
+    seekTo(parseFloat(card.dataset.start));
+  });
 }
 
-function escHtml(s) {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+// ── Scroll Sync ──
+function bindScrollSync() {
+  function syncScroll(source, target) {
+    if (scrollSyncing) return;
+    scrollSyncing = true;
+    const pct = source.scrollTop / (source.scrollHeight - source.clientHeight || 1);
+    target.scrollTop = pct * (target.scrollHeight - target.clientHeight);
+    requestAnimationFrame(() => { scrollSyncing = false; });
+  }
+
+  $originalPane.addEventListener("scroll", () => {
+    if ($scrollSyncToggle.checked) syncScroll($originalPane, $editPane);
+  });
+  $editPane.addEventListener("scroll", () => {
+    if ($scrollSyncToggle.checked) syncScroll($editPane, $originalPane);
+  });
 }
 
-// ── Block deletion ──
-function deleteBlock(id) {
+// ── Cut / Restore ──
+function cutBlock(id) {
   const b = blocks.find(x => x.id === id);
   if (!b || b.deleted) return;
   b.deleted = true;
-  undoStack.push(id);
+  undoStack.push({ type: "cut", id: b.id });
   $undoBtn.disabled = false;
 
-  // Update left card
-  const leftCard = $leftPanel.querySelector(`[data-id="${id}"]`);
-  if (leftCard) {
-    leftCard.classList.add("deleted-view");
-    leftCard.querySelector(".block-meta").innerHTML = `
-      <span>${b.index ?? b.id + 1}  ${fmt(b.start)}\u2013${fmt(b.end)}</span>
-      <span class="removed-badge">Removed</span>
-    `;
-  }
-
-  // Hide right card
-  const rightCard = $rightPanel.querySelector(`[data-id="${id}"]`);
-  if (rightCard) rightCard.classList.add("deleted-edit");
-
+  updateEditBlock(id);
+  updateOriginalBlock(id);
   updateSummary();
 }
 
-function undoDelete() {
-  if (!undoStack.length) return;
-  const id = undoStack.pop();
+function restoreBlock(id) {
   const b = blocks.find(x => x.id === id);
-  if (!b) return;
+  if (!b || !b.deleted) return;
   b.deleted = false;
 
-  // Update left card
-  const leftCard = $leftPanel.querySelector(`[data-id="${id}"]`);
-  if (leftCard) {
-    leftCard.classList.remove("deleted-view");
-    leftCard.querySelector(".block-meta").innerHTML = `
-      <span>${b.index ?? b.id + 1}  ${fmt(b.start)}\u2013${fmt(b.end)}</span>
-    `;
-  }
-
-  // Show right card
-  const rightCard = $rightPanel.querySelector(`[data-id="${id}"]`);
-  if (rightCard) rightCard.classList.remove("deleted-edit");
-
-  $undoBtn.disabled = undoStack.length === 0;
+  updateEditBlock(id);
+  updateOriginalBlock(id);
   updateSummary();
+}
+
+function undoLast() {
+  if (!undoStack.length) return;
+  const action = undoStack.pop();
+  $undoBtn.disabled = undoStack.length === 0;
+
+  if (action.type === "cut") {
+    restoreBlock(action.id);
+  } else if (action.type === "edit") {
+    const b = blocks.find(x => x.id === action.id);
+    if (b) {
+      b.text = action.prevText;
+      updateEditBlock(action.id);
+      updateOriginalBlock(action.id);
+      updateSummary();
+    }
+  }
 }
 
 // ── Summary ──
 function updateSummary() {
   const total = blocks.length;
   const removed = blocks.filter(b => b.deleted).length;
+  const edited = blocks.filter(b => !b.deleted && b.text !== b.originalText).length;
   const cutDuration = blocks.filter(b => b.deleted).reduce((s, b) => s + (b.end - b.start), 0);
   const totalDuration = blocks.length ? blocks[blocks.length - 1].end : 0;
   const pct = totalDuration > 0 ? ((cutDuration / totalDuration) * 100).toFixed(1) : "0.0";
 
   document.getElementById("sumTotal").textContent = total;
-  document.getElementById("sumRemoved").textContent = removed;
+  document.getElementById("sumRemoved").textContent = removed + (edited > 0 ? ` (+${edited} edited)` : "");
   document.getElementById("sumTimeCut").textContent = fmt(cutDuration);
   document.getElementById("sumReduction").textContent = pct + "%";
 }
@@ -683,54 +1295,30 @@ $videoPlayer.addEventListener("timeupdate", () => {
   if (active === currentHighlight) return;
   currentHighlight = active;
 
-  // Update highlight
-  $leftPanel.querySelectorAll(".block-card.active").forEach(c => c.classList.remove("active"));
-  $rightPanel.querySelectorAll(".block-card.active").forEach(c => c.classList.remove("active"));
+  // Highlight in both panes
+  [$originalPane, $editPane].forEach($pane => {
+    $pane.querySelectorAll(".block-card.active").forEach(c => c.classList.remove("active"));
+    if (active >= 0) {
+      const card = $pane.querySelector(`[data-id="${active}"]`);
+      if (card) card.classList.add("active");
+    }
+  });
 
-  if (active >= 0) {
-    const lc = $leftPanel.querySelector(`[data-id="${active}"]`);
-    const rc = $rightPanel.querySelector(`[data-id="${active}"]`);
-    if (lc) { lc.classList.add("active"); scrollIntoViewIfNeeded(lc, $leftPanel); }
-    if (rc && !rc.classList.contains("deleted-edit")) {
-      rc.classList.add("active");
-      scrollIntoViewIfNeeded(rc, $rightPanel);
+  // Scroll the edit pane; original will follow via sync
+  if (active >= 0 && $scrollSyncToggle.checked) {
+    const card = $editPane.querySelector(`[data-id="${active}"]`);
+    if (card) {
+      const rect = card.getBoundingClientRect();
+      const cRect = $editPane.getBoundingClientRect();
+      if (rect.top < cRect.top + 40 || rect.bottom > cRect.bottom) {
+        card.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
     }
   }
 });
 
 function seekTo(time) {
   $videoPlayer.currentTime = time;
-}
-
-function scrollIntoViewIfNeeded(el, container) {
-  const rect = el.getBoundingClientRect();
-  const cRect = container.getBoundingClientRect();
-  if (rect.top < cRect.top + 40 || rect.bottom > cRect.bottom) {
-    el.scrollIntoView({ behavior: "smooth", block: "center" });
-  }
-}
-
-// ── Scroll sync between panels ──
-let scrollSyncing = false;
-function setupScrollSync() {
-  const left = $leftPanel;
-  const right = $rightPanel;
-
-  left.addEventListener("scroll", () => {
-    if (!$scrollSyncToggle.checked || scrollSyncing) return;
-    scrollSyncing = true;
-    const pct = left.scrollTop / (left.scrollHeight - left.clientHeight || 1);
-    right.scrollTop = pct * (right.scrollHeight - right.clientHeight || 1);
-    requestAnimationFrame(() => { scrollSyncing = false; });
-  });
-
-  right.addEventListener("scroll", () => {
-    if (!$scrollSyncToggle.checked || scrollSyncing) return;
-    scrollSyncing = true;
-    const pct = right.scrollTop / (right.scrollHeight - right.clientHeight || 1);
-    left.scrollTop = pct * (left.scrollHeight - left.clientHeight || 1);
-    requestAnimationFrame(() => { scrollSyncing = false; });
-  });
 }
 
 // ── Margin slider ──
@@ -743,25 +1331,24 @@ function toggleAdvanced() {
   const panel = document.getElementById("advanced-panel");
   panel.classList.toggle("hidden");
   document.getElementById("advancedToggle").textContent =
-    panel.classList.contains("hidden") ? "Advanced Mode" : "Simple Mode";
+    panel.classList.contains("hidden") ? "Advanced" : "Simple";
 }
 
 // ── Export ──
 function startExport() {
-  const videoPath = $videoPath.value.trim();
   if (!videoPath) return;
 
   const $btn = document.getElementById("exportBtn");
   $btn.disabled = true;
-  $btn.textContent = "Exporting...";
+  $btn.textContent = "Exporting\u2026";
   $exportResult.classList.add("hidden");
 
-  // First, get server-side diff for accurate JSON timestamps
+  // Send originalText for diff matching (so user edits don't break cut detection)
   const keptBlocks = blocks.filter(b => !b.deleted).map(b => ({
     index: b.index,
     start: b.start,
     end: b.end,
-    text: b.text,
+    text: b.originalText,
   }));
 
   fetch("/api/diff", {
@@ -778,7 +1365,6 @@ function startExport() {
     if (diffData.error) throw new Error(diffData.error);
     deletedRanges = diffData.deleted_ranges;
 
-    // Update summary with server-computed values
     if (diffData.summary) {
       const s = diffData.summary;
       document.getElementById("sumTotal").textContent = s.total_blocks;
@@ -787,7 +1373,6 @@ function startExport() {
       document.getElementById("sumReduction").textContent = s.reduction_pct + "%";
     }
 
-    // Now export
     const payload = {
       video_path: videoPath,
       deleted_ranges: deletedRanges,
@@ -795,7 +1380,6 @@ function startExport() {
       export: document.getElementById("exportFormat").value,
     };
 
-    // Advanced options
     const silentSpeed = document.getElementById("silentSpeed").value.trim();
     const soundedSpeed = document.getElementById("soundedSpeed").value.trim();
     const videoCodec = document.getElementById("videoCodec").value.trim();
@@ -841,12 +1425,10 @@ function startExport() {
 
 // ── Keyboard shortcuts ──
 document.addEventListener("keydown", (e) => {
-  // Ctrl+Z / Cmd+Z: undo
   if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
-    // Don't intercept if focused on an input
-    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.isContentEditable) return;
     e.preventDefault();
-    undoDelete();
+    undoLast();
   }
 });
 </script>
