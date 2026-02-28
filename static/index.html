@@ -373,6 +373,8 @@ header h1 span { color: var(--blue); }
   box-shadow: var(--shadow-lg);
 }
 video { width: 100%; display: block; max-height: 400px; }
+.audio-only .video-wrap { background: var(--bg-surface); border: 1px solid var(--border); }
+.audio-only video { height: 54px; }
 
 .video-toolbar {
   display: flex;
@@ -942,7 +944,7 @@ mark.search-highlight.current {
               <option value="premiere">Premiere</option>
               <option value="resolve">DaVinci Resolve</option>
               <option value="clip-sequence">Clip Sequence</option>
-              <option value="video">Video</option>
+              <option value="video" id="settExportFormatVideoOpt">Video</option>
             </select>
           </div>
           <div class="settings-field">
@@ -957,7 +959,7 @@ mark.search-highlight.current {
             <label>Sounded speed</label>
             <input type="text" id="settSoundedSpeed" placeholder="1">
           </div>
-          <div class="settings-field">
+          <div class="settings-field" id="settVideoCodecField">
             <label>Video codec</label>
             <input type="text" id="settVideoCodec" placeholder="auto">
           </div>
@@ -1016,9 +1018,9 @@ mark.search-highlight.current {
   <div class="drop-zone-wrap">
     <div class="drop-zone" id="dropZone">
       <div class="drop-zone-icon">&#127916;</div>
-      <div class="drop-zone-text">Drop a video file here or <strong>click to browse</strong></div>
-      <div class="drop-zone-hint">mp4, mov, mkv, avi, webm</div>
-      <input type="file" class="drop-zone-file-input" id="fileInput" accept="video/*">
+      <div class="drop-zone-text">Drop a video or audio file here or <strong>click to browse</strong></div>
+      <div class="drop-zone-hint">mp4, mov, mkv, webm, mp3, wav, m4a, flac</div>
+      <input type="file" class="drop-zone-file-input" id="fileInput" accept="video/*,audio/*">
     </div>
     <div class="drop-alt">
       <span class="drop-alt-divider">or</span>
@@ -1109,7 +1111,7 @@ mark.search-highlight.current {
           <option value="premiere">Premiere</option>
           <option value="resolve">DaVinci Resolve</option>
           <option value="clip-sequence">Clip Sequence</option>
-          <option value="video">Video</option>
+          <option value="video" id="exportFormatVideoOpt">Video</option>
         </select>
       </div>
       <div class="export-spacer"></div>
@@ -1125,7 +1127,7 @@ mark.search-highlight.current {
       <div class="advanced-grid">
         <label><span>Silent speed <span class="info-tip" tabindex="0">i<span class="tip-text">Playback speed for silent/cut sections. Use 99999 to fully remove them, or a number like 8 to speed them up instead.</span></span></span> <input type="text" id="silentSpeed" placeholder="99999 (cut)"></label>
         <label><span>Sounded speed <span class="info-tip" tabindex="0">i<span class="tip-text">Playback speed for sections with audio. Default is 1 (normal speed). Use 1.5 or 2 to speed up the entire sounded portion.</span></span></span> <input type="text" id="soundedSpeed" placeholder="1"></label>
-        <label><span>Video codec <span class="info-tip" tabindex="0">i<span class="tip-text">Video codec for re-encoding. Common options: h264, h265/hevc, prores. Leave blank for auto-editor's default.</span></span></span> <input type="text" id="videoCodec" placeholder="auto"></label>
+        <label id="videoCodecField"><span>Video codec <span class="info-tip" tabindex="0">i<span class="tip-text">Video codec for re-encoding. Common options: h264, h265/hevc, prores. Leave blank for auto-editor's default.</span></span></span> <input type="text" id="videoCodec" placeholder="auto"></label>
         <label><span>Audio codec <span class="info-tip" tabindex="0">i<span class="tip-text">Audio codec for re-encoding. Common options: aac, pcm_s16le, mp3. Leave blank for auto-editor's default.</span></span></span> <input type="text" id="audioCodec" placeholder="auto"></label>
         <label><span>FFmpeg args <span class="info-tip" tabindex="0">i<span class="tip-text">Extra FFmpeg arguments passed through to the encoder. Example: -crf 22 -preset veryfast for H.264 quality/speed tradeoff.</span></span></span> <input type="text" id="ffmpegArgs" placeholder="-crf 22 -preset veryfast"></label>
         <label><span>Edit method <span class="info-tip" tabindex="0">i<span class="tip-text">auto-editor's --edit flag. Controls what gets detected as silence. Examples: audio:threshold=4%, motion:threshold=2%, or combine with audio:or:motion.</span></span></span> <input type="text" id="editMethod" placeholder="audio:threshold=4%"></label>
@@ -1158,6 +1160,12 @@ let jsonPath = "";
 let currentHighlight = -1;
 let deletedRanges = [];
 let scrollSyncing = false;
+let isAudioFile = false;
+const AUDIO_EXTENSIONS = new Set(['mp3','wav','m4a','flac','ogg','aac','wma']);
+function checkIsAudio(path) {
+  const ext = path.split('.').pop().toLowerCase();
+  return AUDIO_EXTENSIONS.has(ext);
+}
 
 // Keyboard nav & multi-select state
 let focusedBlockId = null;
@@ -1323,6 +1331,7 @@ function startTranscribe() {
   const path = videoPath || $videoPathInput.value.trim();
   if (!path) return;
   videoPath = path;
+  isAudioFile = checkIsAudio(videoPath);
 
   $progressSection.classList.remove("hidden");
   $progressLog.innerHTML = "";
@@ -1377,6 +1386,7 @@ function loadExisting() {
   const path = $videoPathInput.value.trim();
   if (!path) return;
   videoPath = path;
+  isAudioFile = checkIsAudio(videoPath);
 
   const base = path.replace(/\.[^.]+$/, "");
   srtPath = base + ".srt";
@@ -1386,9 +1396,19 @@ function loadExisting() {
 }
 
 // ── Load Transcript ──
+function updateMediaTypeUI() {
+  $videoSection.classList.toggle("audio-only", isAudioFile);
+  document.getElementById("videoCodecField").style.display = isAudioFile ? "none" : "";
+  document.getElementById("settVideoCodecField").style.display = isAudioFile ? "none" : "";
+  const label = isAudioFile ? "Audio" : "Video";
+  document.getElementById("exportFormatVideoOpt").textContent = label;
+  document.getElementById("settExportFormatVideoOpt").textContent = label;
+}
+
 function loadTranscript() {
   $videoPlayer.src = `/media?path=${encodeURIComponent(videoPath)}`;
   $videoSection.classList.remove("hidden");
+  updateMediaTypeUI();
 
   // Try .srt.orig first, then .srt
   fetch(`/api/srt?path=${encodeURIComponent(origSrtPath)}`)
