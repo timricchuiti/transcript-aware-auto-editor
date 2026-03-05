@@ -2,93 +2,85 @@
 
 ## Project Overview
 
-A Python CLI tool that wraps [auto-editor](https://github.com/WyattBlue/auto-editor) with a transcript-based editing layer. Users transcribe video via WhisperX, delete unwanted blocks from an `.srt` file, and the tool merges those cuts with auto-editor's silence detection before exporting (FCPXML, Premiere XML, DaVinci Resolve, or re-encoded video).
+A browser-based transcript editing tool for video and audio. Users transcribe media via WhisperX (or CrisperWhisper), cut/reorder/edit blocks in a two-pane UI, and export as FCPXML (Final Cut Pro / DaVinci Resolve), Premiere XML, or re-encoded video/audio via ffmpeg.
 
-**Status:** Greenfield — PRD and README exist, no application code written yet.
+**Primary interface:** `python3 web_gui.py` → browser GUI at localhost:5000
 
-## Key Documents
-
-- `PRD.md` — Full product requirements, architecture, CLI flags, roadmap
-- `README.md` — User-facing docs and usage examples
-
-## Architecture (from PRD)
+## Architecture
 
 ```
-Video → WhisperX → .json (word timestamps) + .srt (editable)
-          ↓
-   User deletes SRT blocks
-          ↓
-   Diff engine (original vs edited SRT, timestamps from JSON)
-          ↓
-   Merge engine (transcript cuts ∪ auto-editor silence cuts)
-          ↓
-   auto-editor export (FCPXML / Premiere / video)
+Media file → WhisperX/CrisperWhisper → .json + .srt + .srt.orig
+     ↓
+Browser UI: two-pane editor (original | edit)
+  - Cut, reorder (drag-and-drop), text edit blocks
+  - Free Edit mode: edit as raw SRT text
+     ↓
+On export:
+  1. silence.py — amplitude-based silence detection (numpy + ffmpeg)
+  2. timeline_export.py — build ordered clip list, generate output
+  3. Output: FCPXML / Premiere XML / video via ffmpeg concat
 ```
 
-### Planned Files
+## Key Files
 
 | File | Purpose |
 |---|---|
-| `auto_transcript.py` | WhisperX wrapper — generates `.json` + `.srt` from video |
-| `transcript_diff.py` | Diffs original vs edited SRT, extracts cut ranges from JSON |
-| `merge_cutlists.py` | Merges transcript cuts with auto-editor's silence/motion cuts |
-| `main.py` | CLI orchestrator for the full pipeline |
+| `web_gui.py` | Flask backend — upload, transcribe (SSE), diff, export endpoints |
+| `static/index.html` | Full single-page editor UI |
+| `static/landing.html` | Marketing landing page |
+| `silence.py` | Silence detection: `detect_silence()`, `apply_margin()`, `get_kept_ranges()` |
+| `timeline_export.py` | `Clip` dataclass, `build_clip_list()`, `generate_fcpxml()`, `generate_premiere_xml()`, `export_video()` |
+| `transcript_diff.py` | SRT parser, WhisperX JSON loader, deleted range detection |
+| `merge_cutlists.py` | Legacy auto-editor command builder (no longer used by web GUI) |
+| `auto_transcript.py` | WhisperX/CrisperWhisper wrapper for transcription |
+| `main.py` | CLI orchestrator (legacy, wraps the old pipeline) |
 
 ## Tech Stack
 
-- Python 3.8+ (system Python at `/opt/homebrew/bin/python3`)
-- Dependencies: `auto-editor`, `whisperx`, `ffmpeg-python`
-- WhisperX requires Python 3.12: use `/opt/homebrew/bin/python3.12` if needed
+- Python 3.13+ (Homebrew), Flask
+- Dependencies: `numpy`, `whisperx`, `flask` (see `requirements.txt`)
+- WhisperX requires Python 3.12: `pipx reinstall whisperx --python /opt/homebrew/bin/python3.12`
 - FFmpeg must be installed (`brew install ffmpeg`)
+- No auto-editor dependency — silence detection and export are handled natively
 
-## CLI Interface (target)
+## Running
 
 ```bash
-# Phase 1: Transcribe
-python3 auto_transcript.py my_video.mp4
-
-# Phase 2: User edits my_video.srt in text editor (delete blocks)
-
-# Phase 3: Apply cuts + export
-python3 main.py my_video.mp4 \
-  --transcript my_video.srt \
-  --whisper-json my_video.json \
-  --margin 0.25 \
-  --export final-cut-pro
+python3 web_gui.py --port 5009          # start on custom port
+python3 web_gui.py                       # default: localhost:5000
 ```
 
-### CLI Flags for `main.py`
+## Export Details
 
-- `--transcribe-only` — generate transcript, stop
-- `--edit-transcript` — open SRT in default editor
-- `--apply-transcript` — diff and inject cuts
-- `--summary` — print edit stats (durations, blocks removed, % reduced)
-- `--export` — `final-cut-pro`, `premiere`, `clip-sequence`, or `video`
-- `--ffmpeg-args` — passthrough for re-encoding (e.g. `"-crf 22 -preset veryfast"`)
-- `--margin` — padding around cuts (seconds)
+- FCPXML imports into FCP as event "PaperCut Import" with project `{filename}_ALTERED`
+- Silence detection threshold parsed from `edit_method` field (e.g. `audio:threshold=0.04`)
+- Export pipeline: ordered_blocks from frontend → silence detection → clip list → output format
 
 ## Design Constraints
 
-- **JSON is source of truth** for timestamps — never trust user-edited SRT timestamps
-- **Block-level deletion only** in v1 (no word-level, no reordering)
+- **JSON is source of truth** for word-level timestamps — SRT timestamps are approximate
+- **Block-level operations** in block mode; free-form editing in Free Edit mode
 - **Non-monotonic/corrupt SRT timestamps** → log warning, skip block, don't crash
-- FCPXML exports reference media by filename; original video must stay unmodified
-- WhisperX timing variance: ±100ms
+- FCPXML exports reference media by absolute file path; original file must stay in place
+- Supports both video and audio-only files across all export formats
 
 ## Development Guidelines
 
 - **Do NOT commit or push unless explicitly asked.** Wait for Tim to say when he wants a commit.
 - Keep modules independent and testable — each file should work as a standalone unit
 - SRT parsing must be robust against messy edits (extra blank lines, missing block numbers, etc.)
-- Use `argparse` for CLI argument handling
 - Write to stdout for status messages, stderr for warnings/errors
-- No GUI — CLI-first, always
-- Test with real video files when possible; keep test fixtures small
 
-## Success Criteria (v1.0)
+## Frontend Features
 
-- Transcribe 10-min video with <5% word error rate
-- Detect and apply 100% of deleted transcript blocks
-- Export valid FCPXML importable by Final Cut Pro
-- Process 10-min video in <2 minutes
-- Zero crashes on malformed SRT input
+- Two-pane view: original (read-only diff display) | edit (interactive)
+- Block mode: cut/restore, drag-and-drop reorder, inline text editing
+- Free Edit mode: toggle to edit the entire transcript as raw SRT text
+- Undo/redo stack (supports cut, restore, edit, reorder actions)
+- Search/find across transcript blocks
+- Auto-edit tools: Clean Fillers, Dedupe Takes
+- Auto-save to localStorage (preserves cuts, edits, and block order)
+- Export presets saved to localStorage
+- Video/audio sync playback with scroll sync
+- Dark mode toggle
+- Keyboard shortcuts: Ctrl+Z/Y undo/redo, Ctrl+F search, arrow keys nav, Delete to cut

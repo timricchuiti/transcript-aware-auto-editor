@@ -12,7 +12,11 @@ from pathlib import Path
 from flask import Flask, Response, jsonify, request, send_file, send_from_directory
 
 from transcript_diff import find_deleted_ranges, parse_srt, load_whisper_json
-from merge_cutlists import build_auto_editor_cmd, run_auto_editor
+from silence import detect_silence, apply_margin, get_kept_ranges
+from timeline_export import (
+    Clip, build_clip_list, get_media_info,
+    generate_fcpxml, generate_premiere_xml, export_video as export_video_file,
+)
 
 app = Flask(__name__, static_folder="static")
 app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024 * 1024  # 10 GB
@@ -256,86 +260,90 @@ def diff_transcript():
 
 @app.route("/api/export", methods=["POST"])
 def export_video():
-    """Run auto-editor with transcript cuts and export settings."""
+    """Build clip list from ordered blocks + silence detection, then export."""
     data = request.get_json()
     video_path = data.get("video_path", "")
-    deleted_ranges = data.get("deleted_ranges", [])  # [{start, end}, ...]
-    margin = data.get("margin")
-    export_format = data.get("export")
-    silent_speed = data.get("silent_speed")
-    sounded_speed = data.get("sounded_speed")
-    video_codec = data.get("video_codec")
-    audio_codec = data.get("audio_codec")
-    ffmpeg_args = data.get("ffmpeg_args")
-    edit_method = data.get("edit_method")
+    ordered_blocks = data.get("ordered_blocks", [])  # [{id, start, end}, ...]
+    margin = data.get("margin", 0.1)
+    export_format = data.get("export", "final-cut-pro")
+    ffmpeg_args = data.get("ffmpeg_args", "")
+    edit_method = data.get("edit_method", "")
     export_folder = data.get("export_folder", "")
 
     video = Path(video_path).resolve()
     if not video.exists():
         return jsonify({"error": f"Video not found: {video_path}"}), 404
 
-    transcript_cuts = [(r["start"], r["end"]) for r in deleted_ranges] if deleted_ranges else None
+    if not ordered_blocks:
+        return jsonify({"success": False, "error": "No blocks to export."}), 400
 
-    extra_args = []
+    try:
+        # Probe media
+        media_info = get_media_info(str(video))
+        frame_rate = media_info["frame_rate"]
 
-    # Output path: if export_folder is set, put the output there
-    if export_folder:
-        export_dir = Path(export_folder).resolve()
-        export_dir.mkdir(parents=True, exist_ok=True)
-        # Determine output extension based on format
+        # Parse threshold from edit_method (e.g. "audio:threshold=0.04")
+        threshold = 0.04
+        if edit_method:
+            import re
+            m = re.search(r"threshold=([0-9.]+)", edit_method)
+            if m:
+                threshold = float(m.group(1))
+
+        # Silence detection
+        is_loud = detect_silence(str(video), threshold=threshold, frame_rate=frame_rate,
+                                 sample_rate=media_info["sample_rate"])
+        margin_frames = int(margin * frame_rate)
+        apply_margin(is_loud, margin_frames)
+        kept_ranges = get_kept_ranges(is_loud, frame_rate)
+
+        # Build clip list from user's ordered blocks + silence data
+        clips = build_clip_list(ordered_blocks, kept_ranges, margin=margin)
+
+        if not clips:
+            return jsonify({"success": False, "error": "No audio detected in kept blocks."})
+
+        # Determine output path
         ext_map = {
             "final-cut-pro": ".fcpxml",
             "premiere": ".xml",
             "resolve": ".fcpxml",
-            "clip-sequence": "",
             "video": video.suffix,
         }
         ext = ext_map.get(export_format, video.suffix)
         output_name = video.stem + "_ALTERED" + ext
+
+        if export_folder:
+            export_dir = Path(export_folder).resolve()
+            export_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            export_dir = video.parent
+
         output_path = export_dir / output_name
-        extra_args.extend(["--output-file", str(output_path)])
-    if silent_speed is not None and silent_speed != "":
-        extra_args.extend(["--video-speed", str(silent_speed)])
-    if sounded_speed is not None and sounded_speed != "":
-        extra_args.extend(["--video-speed", str(sounded_speed)])  # auto-editor uses different flags
-    if video_codec:
-        extra_args.extend(["--video-codec", video_codec])
-    if audio_codec:
-        extra_args.extend(["--audio-codec", audio_codec])
-    if ffmpeg_args:
-        extra_args.extend(ffmpeg_args.split())
-    if edit_method:
-        extra_args.extend(["--edit", edit_method])
 
-    # Format margin for auto-editor (e.g., "0.15sec")
-    margin_str = None
-    if margin is not None:
-        margin_str = f"{margin}sec"
+        # Generate export
+        if export_format in ("final-cut-pro", "resolve"):
+            xml = generate_fcpxml(str(video), clips, media_info)
+            output_path.write_text(xml, encoding="utf-8")
+        elif export_format == "premiere":
+            xml = generate_premiere_xml(str(video), clips, media_info)
+            output_path.write_text(xml, encoding="utf-8")
+        elif export_format == "video":
+            extra = ffmpeg_args.split() if ffmpeg_args else None
+            export_video_file(str(video), clips, str(output_path), extra_args=extra)
+        else:
+            return jsonify({"success": False, "error": f"Unknown export format: {export_format}"})
 
-    cmd = build_auto_editor_cmd(
-        video_path=str(video),
-        transcript_cuts=transcript_cuts,
-        margin=margin_str,
-        export=export_format if export_format else None,
-        extra_args=extra_args if extra_args else None,
-    )
-
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-        if result.returncode != 0:
-            return jsonify({
-                "success": False,
-                "command": " ".join(cmd),
-                "error": result.stderr or "auto-editor failed",
-            })
+        clip_count = len(clips)
+        total_dur = sum(c.duration for c in clips)
         return jsonify({
             "success": True,
-            "command": " ".join(cmd),
-            "stdout": result.stdout,
-            "message": "Export completed successfully.",
+            "message": f"Export completed: {output_path.name} ({clip_count} clips, {total_dur:.1f}s)",
+            "output_path": str(output_path),
         })
-    except subprocess.TimeoutExpired:
-        return jsonify({"success": False, "error": "Export timed out (10 min limit)."})
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
 
 
 def _seconds_to_srt_time(seconds):

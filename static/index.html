@@ -614,6 +614,68 @@ video { width: 100%; display: block; max-height: 400px; }
   letter-spacing: 1px;
 }
 
+/* ── Drag-and-drop reorder ── */
+.drag-handle {
+  cursor: grab;
+  color: var(--text-dim);
+  font-size: 14px;
+  padding: 2px 4px;
+  user-select: none;
+  line-height: 1;
+  opacity: 0.5;
+  transition: opacity 0.15s;
+}
+.drag-handle:active { cursor: grabbing; }
+.block-card:hover .drag-handle { opacity: 1; }
+.block-card.dragging {
+  opacity: 0.4;
+  background: var(--blue-pale);
+}
+.block-card.drag-over-above {
+  box-shadow: inset 0 3px 0 var(--blue);
+}
+.block-card.drag-over-below {
+  box-shadow: inset 0 -3px 0 var(--blue);
+}
+.reorder-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--blue);
+  background: var(--blue-light);
+  border: 1px solid var(--blue);
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* ── Free-edit mode ── */
+.free-edit-textarea {
+  width: 100%;
+  height: 100%;
+  min-height: 55vh;
+  border: none;
+  outline: none;
+  resize: none;
+  font-family: var(--font-script);
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text);
+  background: var(--bg-surface);
+  padding: 16px 20px;
+  white-space: pre-wrap;
+  tab-size: 4;
+}
+.free-edit-textarea:focus {
+  outline: none;
+}
+.btn.active-toggle {
+  background: var(--blue);
+  color: #fff;
+  border-color: var(--blue);
+}
+
 /* ── Export Section ── */
 #export-section {
   padding: 24px 0;
@@ -1085,6 +1147,8 @@ mark.search-highlight.current {
         <button class="btn btn-secondary btn-sm" onclick="dedupeTakes()">Dedupe Takes</button>
         <button class="btn btn-danger-outline btn-sm" onclick="clearAllCuts()">Clear All Cuts</button>
         <span style="width:1px;height:18px;background:var(--border);margin:0 4px;"></span>
+        <button class="btn btn-secondary btn-sm" id="freeEditToggle" onclick="toggleFreeEdit()">Free Edit</button>
+        <span style="width:1px;height:18px;background:var(--border);margin:0 4px;"></span>
         <button class="btn btn-secondary btn-sm" id="undoBtn" onclick="undoLast()" disabled>Undo</button>
         <button class="btn btn-secondary btn-sm" id="redoBtn" onclick="redoLast()" disabled>Redo</button>
         <span id="autosaveIndicator" style="font-size:11px;color:var(--green);opacity:0;transition:opacity 0.3s;margin-left:6px;">Saved</span>
@@ -1171,6 +1235,9 @@ function checkIsAudio(path) {
 let focusedBlockId = null;
 let selectedBlocks = new Set();
 let lastClickedBlockId = null;
+
+// Free-edit mode state
+let freeEditMode = false;
 
 // Search state
 let searchOpen = false;
@@ -1462,8 +1529,12 @@ function loadTranscript() {
 // ── Render Both Panes ──
 function renderTranscript() {
   renderOriginalPane();
-  renderEditPane();
-  bindEditPaneEvents();
+  if (freeEditMode) {
+    renderFreeEditPane();
+  } else {
+    renderEditPane();
+    bindEditPaneEvents();
+  }
   bindScrollSync();
 }
 
@@ -1531,11 +1602,14 @@ function renderEditPane() {
         <div class="block-text">${escHtml(b.originalText)}</div>
       `;
     } else {
+      card.draggable = true;
       card.innerHTML = `
         <div class="block-meta">
           <div class="block-meta-left">
+            <span class="drag-handle" title="Drag to reorder">&#x2630;</span>
             <span class="block-number">${b.index ?? b.id + 1}</span>
             <span class="block-time" data-seek="${b.start}">${fmt(b.start)} \u2013 ${fmt(b.end)}</span>
+            ${hasReordering() && isBlockReordered(b) ? '<span class="reorder-badge">Moved</span>' : ''}
           </div>
           <div class="block-actions">
             <button class="btn btn-danger-outline btn-sm" data-cut="${b.id}">Cut</button>
@@ -1625,6 +1699,11 @@ function bindEditPaneEvents() {
     bindTextEditing(el);
   });
 
+  // Drag-and-drop reorder
+  $editPane.querySelectorAll(".block-card:not(.is-cut)").forEach(card => {
+    bindDragEvents(card);
+  });
+
   // Click card: focus/select + seek (but not on buttons or editable text)
   $editPane.querySelectorAll(".block-card").forEach(card => {
     card.addEventListener("click", (e) => {
@@ -1676,6 +1755,7 @@ function updateOriginalBlock(id) {
 
 // ── Update single block on edit pane ──
 function updateEditBlock(id) {
+  if (freeEditMode) { renderFreeEditPane(); return; }
   const b = blocks.find(x => x.id === id);
   if (!b) return;
 
@@ -1707,11 +1787,14 @@ function updateEditBlock(id) {
       $redoBtn.disabled = true;
     });
   } else {
+    card.draggable = true;
     card.innerHTML = `
       <div class="block-meta">
         <div class="block-meta-left">
+          <span class="drag-handle" title="Drag to reorder">&#x2630;</span>
           <span class="block-number">${b.index ?? b.id + 1}</span>
           <span class="block-time" data-seek="${b.start}">${fmt(b.start)} \u2013 ${fmt(b.end)}</span>
+          ${hasReordering() && isBlockReordered(b) ? '<span class="reorder-badge">Moved</span>' : ''}
         </div>
         <div class="block-actions">
           <button class="btn btn-danger-outline btn-sm" data-cut="${b.id}">Cut</button>
@@ -1725,6 +1808,7 @@ function updateEditBlock(id) {
     });
     card.querySelector("[data-seek]").addEventListener("click", () => seekTo(b.start));
     bindTextEditing(card.querySelector('[contenteditable="true"]'));
+    bindDragEvents(card);
   }
 
   card.addEventListener("click", (e) => {
@@ -1824,6 +1908,17 @@ function undoLast() {
       updateOriginalBlock(action.id);
       updateSummary();
     }
+  } else if (action.type === "reorder") {
+    const currentOrder = blocks.map(b => b.id);
+    // Restore previous order
+    const reordered = action.prevOrder.map(id => blocks.find(b => b.id === id)).filter(Boolean);
+    blocks.length = 0;
+    blocks.push(...reordered);
+    redoStack.push({ type: "reorder", prevOrder: currentOrder });
+    $redoBtn.disabled = false;
+    renderEditPane();
+    bindEditPaneEvents();
+    updateSummary();
   }
   triggerAutosave();
   if (searchOpen) performSearch();
@@ -1865,6 +1960,16 @@ function redoLast() {
       updateOriginalBlock(action.id);
       updateSummary();
     }
+  } else if (action.type === "reorder") {
+    const currentOrder = blocks.map(b => b.id);
+    const reordered = action.prevOrder.map(id => blocks.find(b => b.id === id)).filter(Boolean);
+    blocks.length = 0;
+    blocks.push(...reordered);
+    undoStack.push({ type: "reorder", prevOrder: currentOrder });
+    $undoBtn.disabled = false;
+    renderEditPane();
+    bindEditPaneEvents();
+    updateSummary();
   }
   triggerAutosave();
   if (searchOpen) performSearch();
@@ -2048,75 +2153,41 @@ function startExport() {
   $btn.textContent = "Exporting\u2026";
   $exportResult.classList.add("hidden");
 
-  // Send originalText for diff matching (so user edits don't break cut detection)
-  const keptBlocks = blocks.filter(b => !b.deleted).map(b => ({
-    index: b.index,
+  // Send ordered blocks directly — backend handles silence detection + clip building
+  const orderedBlocks = blocks.filter(b => !b.deleted).map(b => ({
+    id: b.id,
     start: b.start,
     end: b.end,
-    text: b.originalText,
   }));
 
-  fetch("/api/diff", {
+  const payload = {
+    video_path: videoPath,
+    ordered_blocks: orderedBlocks,
+    margin: parseFloat($marginSlider.value),
+    export: document.getElementById("exportFormat").value,
+    export_folder: loadSettings().exportFolder || "",
+  };
+
+  const ffmpegArgs = document.getElementById("ffmpegArgs").value.trim();
+  const editMethod = document.getElementById("editMethod").value.trim();
+  if (ffmpegArgs) payload.ffmpeg_args = ffmpegArgs;
+  if (editMethod) payload.edit_method = editMethod;
+
+  fetch("/api/export", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      orig_srt_path: origSrtPath,
-      json_path: jsonPath,
-      kept_blocks: keptBlocks,
-    }),
-  })
-  .then(r => r.json())
-  .then(diffData => {
-    if (diffData.error) throw new Error(diffData.error);
-    deletedRanges = diffData.deleted_ranges;
-
-    if (diffData.summary) {
-      const s = diffData.summary;
-      document.getElementById("sumTotal").textContent = s.total_blocks;
-      document.getElementById("sumRemoved").textContent = s.removed_blocks;
-      document.getElementById("sumTimeCut").textContent = fmt(s.cut_duration);
-      document.getElementById("sumReduction").textContent = s.reduction_pct + "%";
-    }
-
-    const payload = {
-      video_path: videoPath,
-      deleted_ranges: deletedRanges,
-      margin: parseFloat($marginSlider.value),
-      export: document.getElementById("exportFormat").value,
-      export_folder: loadSettings().exportFolder || "",
-    };
-
-    const silentSpeed = document.getElementById("silentSpeed").value.trim();
-    const soundedSpeed = document.getElementById("soundedSpeed").value.trim();
-    const videoCodec = document.getElementById("videoCodec").value.trim();
-    const audioCodec = document.getElementById("audioCodec").value.trim();
-    const ffmpegArgs = document.getElementById("ffmpegArgs").value.trim();
-    const editMethod = document.getElementById("editMethod").value.trim();
-
-    if (silentSpeed) payload.silent_speed = silentSpeed;
-    if (soundedSpeed) payload.sounded_speed = soundedSpeed;
-    if (videoCodec) payload.video_codec = videoCodec;
-    if (audioCodec) payload.audio_codec = audioCodec;
-    if (ffmpegArgs) payload.ffmpeg_args = ffmpegArgs;
-    if (editMethod) payload.edit_method = editMethod;
-
-    return fetch("/api/export", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    body: JSON.stringify(payload),
   })
   .then(r => r.json())
   .then(result => {
     $exportResult.classList.remove("hidden");
     if (result.success) {
       $exportResult.className = "success";
-      $exportResult.textContent = `${result.message}\n\nCommand: ${result.command}`;
-      if (result.stdout) $exportResult.textContent += `\n\n${result.stdout}`;
+      $exportResult.textContent = result.message;
       clearAutosave();
     } else {
       $exportResult.className = "error";
-      $exportResult.textContent = `Export failed: ${result.error}\n\nCommand: ${result.command || "N/A"}`;
+      $exportResult.textContent = `Export failed: ${result.error}`;
     }
   })
   .catch(err => {
@@ -2259,7 +2330,17 @@ function checkAutosave() {
     const editedCount = data.blocks.filter(b => !b.deleted && b.text !== b.originalText).length;
     const msg = `Found auto-saved session from ${agoText}:\n• ${cutCount} blocks cut\n• ${editedCount} blocks edited\n\nRestore this session?`;
     if (confirm(msg)) {
-      // Restore blocks state
+      // Restore blocks state and order
+      const savedMap = new Map(data.blocks.map(b => [b.id, b]));
+      // Reorder blocks array to match saved order
+      const reordered = data.blocks.map(saved => blocks.find(x => x.id === saved.id)).filter(Boolean);
+      // Add any blocks not in saved data at the end (shouldn't happen, but be safe)
+      for (const b of blocks) {
+        if (!savedMap.has(b.id)) reordered.push(b);
+      }
+      blocks.length = 0;
+      blocks.push(...reordered);
+      // Restore properties
       for (const saved of data.blocks) {
         const b = blocks.find(x => x.id === saved.id);
         if (!b) continue;
@@ -2580,6 +2661,226 @@ function dedupeTakes() {
   updateSummary();
   triggerAutosave();
   if (searchOpen) performSearch();
+}
+
+// ── Free Edit Mode ──
+function toggleFreeEdit() {
+  const btn = document.getElementById("freeEditToggle");
+  if (freeEditMode) {
+    // Leaving free edit — sync text back to blocks
+    syncFreeEditToBlocks();
+    freeEditMode = false;
+    btn.classList.remove("active-toggle");
+    renderEditPane();
+    bindEditPaneEvents();
+    renderOriginalPane();
+    updateSummary();
+    triggerAutosave();
+  } else {
+    // Entering free edit
+    if (searchOpen) closeSearch();
+    freeEditMode = true;
+    btn.classList.add("active-toggle");
+    renderFreeEditPane();
+    renderOriginalPane();
+  }
+}
+
+function blocksToSrt(blockList) {
+  let out = "";
+  for (let i = 0; i < blockList.length; i++) {
+    const b = blockList[i];
+    const startTs = secsToSrtTime(b.start);
+    const endTs = secsToSrtTime(b.end);
+    out += `${i + 1}\n${startTs} --> ${endTs}\n${b.text}\n\n`;
+  }
+  return out;
+}
+
+function secsToSrtTime(sec) {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  const ws = Math.floor(s);
+  const ms = Math.round((s - ws) * 1000);
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(ws).padStart(2,'0')},${String(ms).padStart(3,'0')}`;
+}
+
+function renderFreeEditPane() {
+  const kept = blocks.filter(b => !b.deleted);
+  const srt = blocksToSrt(kept);
+
+  $editPane.innerHTML = "";
+  const ta = document.createElement("textarea");
+  ta.className = "free-edit-textarea";
+  ta.id = "freeEditTextarea";
+  ta.value = srt;
+  ta.spellcheck = false;
+  $editPane.appendChild(ta);
+
+  // Debounced sync on input for live left-pane updates
+  ta.addEventListener("input", () => {
+    debounce("free-edit-sync", () => {
+      syncFreeEditToBlocks();
+      renderOriginalPane();
+      updateSummary();
+    }, 400);
+  });
+}
+
+function parseSrtTimestamp(ts) {
+  const m = ts.trim().match(/(\d+):(\d{2}):(\d{2})[,.](\d{3})/);
+  if (!m) return null;
+  return parseInt(m[1]) * 3600 + parseInt(m[2]) * 60 + parseInt(m[3]) + parseInt(m[4]) / 1000;
+}
+
+function syncFreeEditToBlocks() {
+  const ta = document.getElementById("freeEditTextarea");
+  if (!ta) return;
+
+  const text = ta.value;
+  // Parse SRT blocks from the textarea
+  const rawBlocks = text.split(/\n\s*\n/).filter(s => s.trim());
+  const parsed = [];
+
+  for (const raw of rawBlocks) {
+    const lines = raw.trim().split("\n").map(l => l.trim()).filter(Boolean);
+    if (!lines.length) continue;
+
+    // Find the timestamp line
+    let tsIdx = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].includes(" --> ")) { tsIdx = i; break; }
+    }
+    if (tsIdx === -1) continue;
+
+    const tsParts = lines[tsIdx].split(" --> ");
+    const start = parseSrtTimestamp(tsParts[0]);
+    const end = parseSrtTimestamp(tsParts[1]);
+    if (start === null || end === null) continue;
+
+    const blockText = lines.slice(tsIdx + 1).join(" ").trim();
+    parsed.push({ start, end, text: blockText });
+  }
+
+  // Match parsed blocks to existing blocks by timestamp proximity
+  const matched = new Set();      // indices into blocks[]
+  const newOrder = [];             // block references in parsed order
+
+  for (const pb of parsed) {
+    let bestIdx = -1;
+    let bestDist = Infinity;
+    for (let i = 0; i < blocks.length; i++) {
+      if (matched.has(i)) continue;
+      const dist = Math.abs(blocks[i].start - pb.start) + Math.abs(blocks[i].end - pb.end);
+      if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+    }
+    // Allow matching if timestamps are within 1 second total drift
+    if (bestIdx >= 0 && bestDist < 1.0) {
+      matched.add(bestIdx);
+      const b = blocks[bestIdx];
+      b.text = pb.text;
+      b.deleted = false;
+      newOrder.push(b);
+    }
+  }
+
+  // Any block not matched is considered deleted
+  for (let i = 0; i < blocks.length; i++) {
+    if (!matched.has(i)) {
+      blocks[i].deleted = true;
+    }
+  }
+
+  // Reorder: put matched blocks in parsed order, then unmatched (deleted) at end
+  const unmatched = blocks.filter((_, i) => !matched.has(i));
+  blocks.length = 0;
+  blocks.push(...newOrder, ...unmatched);
+}
+
+// ── Drag-and-drop reorder ──
+let dragSourceId = null;
+
+function bindDragEvents(card) {
+  card.addEventListener("dragstart", (e) => {
+    dragSourceId = parseInt(card.dataset.id);
+    card.classList.add("dragging");
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", dragSourceId);
+  });
+
+  card.addEventListener("dragend", () => {
+    card.classList.remove("dragging");
+    dragSourceId = null;
+    $editPane.querySelectorAll(".drag-over-above, .drag-over-below").forEach(c => {
+      c.classList.remove("drag-over-above", "drag-over-below");
+    });
+  });
+
+  card.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    const rect = card.getBoundingClientRect();
+    const midY = rect.top + rect.height / 2;
+    card.classList.toggle("drag-over-above", e.clientY < midY);
+    card.classList.toggle("drag-over-below", e.clientY >= midY);
+  });
+
+  card.addEventListener("dragleave", () => {
+    card.classList.remove("drag-over-above", "drag-over-below");
+  });
+
+  card.addEventListener("drop", (e) => {
+    e.preventDefault();
+    card.classList.remove("drag-over-above", "drag-over-below");
+    const targetId = parseInt(card.dataset.id);
+    if (dragSourceId === null || dragSourceId === targetId) return;
+
+    const rect = card.getBoundingClientRect();
+    const insertAfter = e.clientY >= rect.top + rect.height / 2;
+    moveBlock(dragSourceId, targetId, insertAfter);
+  });
+}
+
+function moveBlock(fromId, toId, insertAfter) {
+  const prevOrder = blocks.map(b => b.id);
+  const fromIdx = blocks.findIndex(b => b.id === fromId);
+  if (fromIdx === -1) return;
+
+  const [moved] = blocks.splice(fromIdx, 1);
+  let toIdx = blocks.findIndex(b => b.id === toId);
+  if (toIdx === -1) { blocks.push(moved); }
+  else {
+    if (insertAfter) toIdx++;
+    blocks.splice(toIdx, 0, moved);
+  }
+
+  undoStack.push({ type: "reorder", prevOrder });
+  redoStack = [];
+  $undoBtn.disabled = false;
+  $redoBtn.disabled = true;
+
+  renderEditPane();
+  bindEditPaneEvents();
+  updateSummary();
+  triggerAutosave();
+}
+
+function hasReordering() {
+  const kept = blocks.filter(b => !b.deleted);
+  for (let i = 1; i < kept.length; i++) {
+    if (kept[i].start < kept[i - 1].start) return true;
+  }
+  return false;
+}
+
+function isBlockReordered(block) {
+  // Check if this block's position in the array differs from time-sorted order
+  const kept = blocks.filter(b => !b.deleted);
+  const sorted = [...kept].sort((a, b) => a.start - b.start);
+  const currentIdx = kept.indexOf(block);
+  const sortedIdx = sorted.indexOf(block);
+  return currentIdx !== sortedIdx;
 }
 
 // ── Keyboard shortcuts ──
